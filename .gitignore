@@ -1,0 +1,6 @@
+# Private server identity: generate once locally, never submit.
+ssh_host_ed25519_key
+ssh_host_ed25519_key.pub
+__pycache__/
+*.py[cod]
+tmp/
