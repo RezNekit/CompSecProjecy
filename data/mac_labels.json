@@ -1,0 +1,14 @@
+{
+  "levels": ["public", "internal", "confidential"],
+  "paths": {
+    "/":         "public",
+    "/demo":     "internal",
+    "/projects": "internal",
+    "/admin":    "confidential"
+  },
+  "users": {
+    "alice": "confidential",
+    "bob":   "internal",
+    "eve":   "public"
+  }
+}

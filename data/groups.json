@@ -1,0 +1,5 @@
+{
+  "admins":   ["alice"],
+  "analysts": ["bob"],
+  "staff":    ["alice", "bob", "eve"]
+}

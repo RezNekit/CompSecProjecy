@@ -1,0 +1,6 @@
+prefix,owner,group,mode
+/,alice,staff,0775
+/public,alice,staff,0755
+/public/archive,alice,admins,0750
+/projects,alice,analysts,0770
+/admin,alice,admins,0700

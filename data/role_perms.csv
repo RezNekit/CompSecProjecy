@@ -1,0 +1,9 @@
+role,prefix,read,write,list,stat,mkdir
+guest,/,,,x,x,
+guest,/public,x,,x,x,
+analyst,/,,,x,x,
+analyst,/public,x,,x,x,
+analyst,/demo,x,x,x,x,x
+analyst,/projects,x,x,x,x,x
+admin,/,x,x,x,x,x
+user:eve,/public/archive,deny,deny,deny,deny,deny
