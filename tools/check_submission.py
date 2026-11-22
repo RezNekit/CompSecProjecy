@@ -16,7 +16,7 @@ REQUIRED = ('server/server.py', 'server/auth.py', 'server/policy.py',
             'data/users.json', 'data/user_roles.json', 'data/role_perms.csv',
             'data/mac_labels.json', 'data/dac_owners.csv', 'data/groups.json',
             'README.md', 'policy.md', 'CTF_writeup.pdf',
-            'docs/evidence/wp5-results.md', 'docs/ai-disclosure.md',
+            'docs/ai-disclosure.md',
             'tests/test_policy.py', 'tests/test_auth_loader.py',
             'tests/test_full_stack.py', '.github/workflows/tests.yml')
 
@@ -59,7 +59,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--zip', type=Path)
     args = parser.parse_args()
-    if git('status', '--porcelain').strip():
+    if git('status', '--porcelain', '--untracked-files=no').strip():
         print('Commit reviewed changes first: validation uses the committed tree.')
         return 1
     commit = git('rev-parse', 'HEAD').decode().strip()
@@ -71,7 +71,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='sftp-submission-') as temporary:
         clone = Path(temporary).resolve() / 'fresh'
         subprocess.run(['git', 'clone', '--quiet', '--no-local', str(ROOT), str(clone)], check=True)
-        subprocess.run([sys.executable, '-m', 'pytest', '-q'], cwd=clone, check=True)
+        subprocess.run([sys.executable, '-m', 'pytest', 'tests', '-q'], cwd=clone, check=True)
         if args.zip:
             destination = args.zip.resolve()
             destination.parent.mkdir(parents=True, exist_ok=True)

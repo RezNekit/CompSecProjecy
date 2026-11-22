@@ -153,4 +153,4 @@ deny (including traversal attempts), and one for the audit log.
 
 Startup calls `loader.load_all()` to validate all six static files, constructs
 `AuthService`, and calls `policy.init()` before accepting SSH connections.
-See README and docs/evidence/wp5-results.md for integrated test results.
+See README for integrated test results.

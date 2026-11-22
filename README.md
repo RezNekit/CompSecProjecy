@@ -115,8 +115,7 @@ three in [run 45042041446](https://github.com/RezNekit/CompSecProjecy/actions/ru
 on Windows that may need Developer Mode. A skipped symlink test is reported
 separately and is not evidence of Windows symlink enforcement.
 
-[WP5 evidence](docs/evidence/wp5-results.md) records scope, integration fixes and
-release checks. [AI-use disclosure](docs/ai-disclosure.md) describes assistance.
+See [AI-use disclosure](docs/ai-disclosure.md) for the team's statement.
 After review and committing the complete tree:
 
 ```sh
