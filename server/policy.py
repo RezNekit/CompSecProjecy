@@ -163,10 +163,10 @@ def init(data_dir=DATA_DIR, audit_path=AUDIT_PATH):
 def authorize(user, op, path):
     if current is None:
         raise RuntimeError("policy.init() was not called")
+    return current.authorize(user, op, path)
 
 
 def inherit(user, path, kind):
     if current is None:
         raise RuntimeError("policy.init() was not called")
-
-init()
+    return current.inherit(user, path, kind)

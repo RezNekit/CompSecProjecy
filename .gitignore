@@ -4,3 +4,7 @@ ssh_host_ed25519_key.pub
 __pycache__/
 *.py[cod]
 tmp/
+.venv/
+.pytest_cache/
+server/audit.jsonl
+output/
