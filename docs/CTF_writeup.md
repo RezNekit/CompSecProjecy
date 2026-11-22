@@ -145,9 +145,3 @@ python3 ctf/setup_flag.py             # plant the flag in server/sftp_root for a
 
 Once `server/auth.py` exists, set `CTF_PASSWORD_ALICE`, `CTF_PASSWORD_BOB` and `CTF_PASSWORD_EVE` and run
 `python3 ctf/run_attacks.py --auth real`. The naive run needs port 2222 free.
-
-## 9. Use of generative AI
-
-The client (`client/client.py`), its tests (`tests/test_client.py`), the CTF scripts (`ctf/`) and a first
-draft of this write-up were produced with Claude (Anthropic) and then reviewed, run and edited by
-Omar Alibrandi, who can explain all of the code.

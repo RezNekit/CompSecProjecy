@@ -13,3 +13,5 @@ Other members' AI use has not been collected. Each member must specify the code
 components and report sections assisted by generative AI, or explicitly confirm
 no use. Do not submit this document as a completed team disclosure until those
 confirmations have been added.
+
+Omar used LLMs to understand the topic he was assigned to implement which is Client + CTF and understand how to implement it since never done Computer Security work before, it has helped both in the implementation of the CTF and the writeup file, still while being in control and reviewing and understanding all code or text.
