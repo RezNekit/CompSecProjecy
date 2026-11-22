@@ -36,14 +36,16 @@ Markdown report and all four pages visually inspected.
 
 ## Integration and release
 
-WP2 branch abaa9c9 was integrated after the existing WP1/WP3 and merged WP4 work.
+PR #2 (WP2, abaa9c9) is merged; its commit is an ancestor of main. GitHub
+showed no open pull requests on the final check. No unresolved merge conflicts
+remain. WP2 was integrated after the existing WP1/WP3 and merged WP4 work.
 [Integration review](wp5-integration-review.md) lists defects and regression
 coverage. README contains local setup, user powers, lockout policy, limitations,
 OS result status and links to design/CTF/disclosure.
 
-`.github/workflows/tests.yml` runs Python 3.12 on Windows/macOS/Linux. Actual
-remote results must be read from GitHub Actions; configuration alone is not a
-pass. Local macOS results above do not establish teammate Windows/Linux runs.
+`.github/workflows/tests.yml` runs Python 3.12 on Windows/macOS/Linux. The integrated code (fef526b) passed all three CI jobs in
+[run 45042041446](https://github.com/RezNekit/CompSecProjecy/actions/runs/45042041446).
+These are observed CI passes, not claims that teammates ran tests personally.
 
 `tools/check_submission.py --zip output/submission.zip` requires a clean,
 committed tree, checks required tracked files, scans private-key signatures and

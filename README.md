@@ -107,10 +107,12 @@ number before submission. See [CTF_writeup.pdf](CTF_writeup.pdf), its
 | Platform | Observed result |
 | --- | --- |
 | macOS ARM64, Python 3.14, AsyncSSH 2.24.1 | 48 tests passed locally; full startup, client and lockout included. |
-| Windows, Python 3.12 | CI configured; see the latest GitHub Actions result. No teammate-run result claimed. |
-| Linux, Python 3.12 | CI configured; see the latest GitHub Actions result. No teammate-run result claimed. |
+| Windows, Python 3.12 | CI passed on the integrated code (run 45042041446). No teammate-run result claimed. |
+| Linux, Python 3.12 | CI passed on the integrated code (run 45042041446). No teammate-run result claimed. |
 
-CI runs the same suite on all three OSes. Symlink tests require OS permission;
+CI runs the same suite on all three OSes. The integrated code passed on all
+three in [run 45042041446](https://github.com/RezNekit/CompSecProjecy/actions/runs/45042041446)
+(commit fef526b). Symlink tests require OS permission;
 on Windows that may need Developer Mode. A skipped symlink test is reported
 separately and is not evidence of Windows symlink enforcement.
 
@@ -121,6 +123,9 @@ After review and committing the complete tree:
 ```sh
 .venv/bin/python tools/check_submission.py --zip output/submission.zip
 ```
+
+To rebuild the PDF, install `requirements-docs.txt` and run
+`python tools/build_ctf_pdf.py`; inspect the rendered pages before committing.
 
 The packager checks the committed tree in a fresh local clone, reruns tests,
 excludes keys/runtime data and adds an SHA-256 manifest. It never uploads to the
