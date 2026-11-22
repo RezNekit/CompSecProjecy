@@ -8,3 +8,9 @@ tmp/
 .pytest_cache/
 server/audit.jsonl
 output/
+
+# Client and CTF runtime files
+client/known_hosts
+*.part
+audit.jsonl
+server/sftp_root/admin/ctf/flag.txt
