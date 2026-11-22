@@ -19,5 +19,5 @@ Defects found and fixed during WP5 acceptance testing:
 
 These findings are resolved in this integration change. No GitHub issues were
 opened for already-fixed defects. This review does not substitute for a second
-team member's PR approval. Remaining human checks: confirm group number, read
-code/reports, confirm each member's AI use, and upload/verify the course submission.
+team member's PR approval. Remaining human checks: read code/reports and upload/verify the course submission.
+The user confirmed Dream Team 1 and supplied the AI disclosure wording.

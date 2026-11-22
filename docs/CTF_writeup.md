@@ -1,4 +1,4 @@
-# CTF write-up: protecting the flag in our SFTP server
+# Dream Team 1 - CTF write-up: protecting the flag in our SFTP server
 
 Computer Security group project, stage 1 (SFTP over SSH with DAC, MAC and RBAC).
 Client and CTF. Source of this PDF: `docs/CTF_writeup.md`. Evidence: `docs/evidence/`.
@@ -159,7 +159,6 @@ it did not verify password hashing. The integration rerun and WP5 lockout tests
 add that coverage. This PDF does not claim that a timed race test proves freedom
 from every possible race.
 
-Generative AI assisted the client/CTF implementation and write-up, integration
-review and test cases. The project was not written entirely with AI. See
-`docs/ai-disclosure.md` for the component-level disclosure and remaining team
-confirmation steps.
+We used AI to assist with understanding the assignment, integration and debugging,
+client and CTF development, documentation, and creating test cases. We did not
+write all the code with AI. See `docs/ai-disclosure.md`.

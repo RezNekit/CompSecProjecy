@@ -57,7 +57,8 @@ in output/release-verification.txt alongside the archive (runtime output).
 
 - Review all submitted code and reports; the automated review is not a second
   student's PR approval.
-- Confirm the inherited group01 flag identifier and each member's AI disclosure.
+- Team identity confirmed: Dream Team 1; flag identifier group01.
+- AI disclosure updated to the team's supplied wording.
 - Team members should run tests on their own OS and append their observed result
   to README; CI results are recorded separately.
 - Upload the verified archive to the course portal and confirm the downloaded

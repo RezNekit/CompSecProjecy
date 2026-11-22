@@ -1,4 +1,4 @@
-# SFTP over SSH: DAC, MAC and RBAC
+# Dream Team 1 - SFTP over SSH: DAC, MAC and RBAC
 
 A raw SFTP v3 server and client using AsyncSSH for SSH transport. File-protocol
 packets, authorization and authentication are implemented in this repository.
@@ -100,8 +100,7 @@ The attack runner uses temporary salted scrypt records by default and runs only
 against local temporary servers/jails. Its naive baseline uses the public course
 starter credential as an intentionally vulnerable fixture, never as a production
 credential. Port 2222 must be free for that baseline. It updates the CTF evidence.
-The flag is `FLAG{group01_sftp_wins}` at `/admin/ctf/flag.txt`; confirm the group
-number before submission. See [CTF_writeup.pdf](CTF_writeup.pdf), its
+The flag is `FLAG{group01_sftp_wins}` at `/admin/ctf/flag.txt`; the group identifier is confirmed as Dream Team 1. See [CTF_writeup.pdf](CTF_writeup.pdf), its
 [Markdown source](docs/CTF_writeup.md), and [client notes](docs/client-ctf.md).
 
 | Platform | Observed result |
@@ -143,5 +142,4 @@ course portal. Open and inspect the final zip before submitting.
   are outside the remote SFTP threat model. Windows junction race coverage is
   described in the earlier WP1 evidence, not newly established by macOS tests.
 - The course brief and task division list different deadlines; verify the course
-  deadline. Team review, individual AI confirmations and course upload remain
-  human actions.
+  deadline. Team review and course upload remain human actions.

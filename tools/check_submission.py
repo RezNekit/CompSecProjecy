@@ -90,7 +90,7 @@ def main():
                     assert hashlib.sha256(archive.read(name)).hexdigest() == digest
             print(f'Created and verified {destination} (commit {commit})')
     print('Fresh-checkout tests and automated submission checks passed.')
-    print('Human checks: group number, member disclosures, review and course upload.')
+    print('Human checks: final review and course upload.')
     return 0
 
 
