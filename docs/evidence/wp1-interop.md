@@ -1,10 +1,11 @@
 # WP1 server verification - 12 November 2026
 
-Scope: Person 1 only. Windows, Python 3.12, AsyncSSH 2.24.1,
-OpenSSH_for_Windows_9.5p2 (LibreSSL 3.8.2). These results do not establish
-Linux/macOS compatibility or validate the missing WP2/WP3 implementations.
+These are the earlier WP1 results from Person 1, using Windows, Python 3.12,
+AsyncSSH 2.24.1 and OpenSSH_for_Windows_9.5p2 (LibreSSL 3.8.2). At this point
+WP2 and WP3 had not been integrated, so this run only checked the server part.
+It did not check Linux or macOS compatibility.
 
-## Fixture and host verification
+## Test setup
 
 The production server's `serve()` entry point ran on loopback with an ephemeral
 port and a temporary empty jail. The fixture supplied an ephemeral password,
@@ -50,10 +51,10 @@ Bytes: 393225
 Gate operations: list, mkdir, read, realpath, stat, write
 ```
 
-The uploaded and downloaded byte strings were compared directly and matched.
-The payload contains all byte values and is larger than one READ or WRITE
-chunk. The displayed Windows mode is OS metadata under the no-op inheritance
-fixture; it is not evidence of WP3's DAC implementation.
+The downloaded file matched the upload byte for byte. We used a file with all
+byte values, large enough to need several READ and WRITE requests. The mode
+shown by Windows came from the OS metadata with the test inheritance callback;
+it did not tell us whether WP3's DAC rules worked.
 
 The screenshot and task division request an OpenSSH `stat .` command, but this
 installed OpenSSH CLI does not implement that command. This is a CLI limitation,
@@ -67,9 +68,9 @@ STAT(request_id=1001, path=".")       -> ATTRS(request_id=1001)
 Result: PASS
 ```
 
-## Focused server checks
+## Other server checks
 
-Temporary development checks were run independently of WP5's future test suite:
+We also ran temporary checks during development, before the WP5 test suite:
 
 ```text
 python -m pytest tmp/check_wp1.py -q -p no:cacheprovider --basetemp=tmp/check-run-4
@@ -94,12 +95,13 @@ The known starter key was removed; private keys and temporary verification
 artifacts are ignored by `.gitignore`. Existing jail contents were preserved
 when moved under `server/sftp_root`.
 
-## Integration boundary
+## What was still missing at the time
 
-WP2's `auth.py`/loader/audit and WP3's `policy.py` are absent. Normal startup
-must fail closed until those hooks are integrated. The injection contract and
-operation mapping are in the two WP1 sections of `policy.md`. Real salted
-authentication, lockout, DAC/MAC/RBAC, policy audit records and owner/label/mode
-inheritance cannot be claimed verified by these stub-based runs. No WP2-WP5
+At the time of this run, WP2's `auth.py`, loader and audit code and WP3's
+`policy.py` were still missing. Normal startup had to refuse connections until
+these were integrated. The injection contract and
+operation mapping are in the two WP1 sections of `policy.md`. Because we used test callbacks, this run did not verify salted password
+authentication, lockout, DAC/MAC/RBAC, policy audit records or owner, label and
+mode inheritance. No WP2-WP5
 deliverables were implemented. The task-division deadline also differs from
 the screenshot deadline; neither is used to change the technical scope.

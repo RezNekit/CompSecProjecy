@@ -1,44 +1,53 @@
 # Dream Team 1 - CTF write-up: protecting the flag in our SFTP server
 
-Computer Security group project, stage 1 (SFTP over SSH with DAC, MAC and RBAC).
-Client and CTF. Source of this PDF: `docs/CTF_writeup.md`. Evidence: `docs/evidence/`.
+This is the CTF part of our Computer Security group project. We tested whether
+a user could get around the access controls in our SFTP server and read or
+change the flag. The test output is saved in `docs/evidence/`.
 
-## 1. Summary
+## What we tested
 
-The flag `FLAG{group01_sftp_wins}` is stored at `/admin/ctf/flag.txt` inside the server's jail, and only alice
-(role admin, clearance confidential, file owner) may read it. It sits behind four independent layers: RBAC, MAC,
-DAC, and the server's path canonicalization with no-follow file access. With our own client
-(`ctf/run_attacks.py`) we made 27 attack attempts in 7 classes, plus some enumeration checks. None of them read or
-changed the flag on the hardened server, and alice could still read it. On the unmodified course starter the same
-client leaked the flag in 3 different ways and destroyed it once.
+We put `FLAG{group01_sftp_wins}` at `/admin/ctf/flag.txt` inside the server's
+jail. Only alice should be able to read it, since she is the owner, has the
+admin role and has confidential clearance. We then used our client through
+`ctf/run_attacks.py` to try reading or changing it as users who should not have
+access. The runner made 27 attack attempts across seven classes, alongside
+directory checks and a separate symlink-swap test. None read or changed the
+flag on our updated server, and alice could still read it normally. With the
+original course starter, we could read the flag in three ways and truncate it
+in another attack.
 
-The hardened runs (22 November) used the project's `server/server.py` with the project's policy,
-`server/policy.py` loaded from `data/`. The final integration runner uses `server/auth.py` with temporary salted scrypt records for each
-user. Earlier protocol/policy runs used a one-run password callback; section 9 describes the
-authentication integration and the current evidence.
+The final run on 22 November used `server/server.py`, the policy in
+`server/policy.py` and the configuration in `data/`. It also used
+`server/auth.py` with temporary salted scrypt password records. Our earlier
+runs used a temporary password callback, so those only checked the protocol
+and policy. We describe the later authentication checks at the end.
 
-## 2. Flag design
+## Flag design
 
-| Item | Value |
-| --- | --- |
-| Location | `/admin/ctf/flag.txt` (jail-relative; on disk `server/sftp_root/admin/ctf/flag.txt`) |
-| Planted by | `ctf/setup_flag.py`, at deployment time, not committed to git |
-| Only legitimate reader | alice: role admin, clearance confidential, owner of the file |
-| Decoys | `/public/welcome.txt`, `/projects/plan.txt` |
+The flag is created by `ctf/setup_flag.py` when setting up the server. On disk
+it is at `server/sftp_root/admin/ctf/flag.txt`; the flag file is not committed to
+git. We also have `/public/welcome.txt` and `/projects/plan.txt` as decoys.
 
-Users (`data/user_roles.json`, `data/mac_labels.json`, `data/groups.json`): alice (role admin, clearance
-confidential, groups admins and staff), bob (analyst, internal, analysts and staff), eve (guest, public, staff).
+There are three users. Alice is an admin with confidential clearance and is in
+the admins and staff groups. Bob is an analyst with internal clearance and is
+in analysts and staff. Eve is a guest with public clearance and is only in
+staff. These settings are in `data/user_roles.json`, `data/mac_labels.json` and
+`data/groups.json`.
 
-| Layer | Mechanism | Enforced in | Who it stops on its own |
-| --- | --- | --- | --- |
-| 1. RBAC | Only role admin has a row covering `/admin` (`admin,/`); analyst and guest rows stop at `/public`, `/demo` and `/projects` | policy gate (`server/policy.py`) | bob, eve |
-| 2. MAC | `/admin` labelled confidential; no read up (clearance must be at least the label), no write down | policy gate | bob, eve; also stops alice copying the flag to a lower level |
-| 3. DAC | `/admin` alice:admins 0700 (owner only, inherited by everything below it) | policy gate | bob, eve |
-| 4. Path handling | Canonicalize before the gate (`safe_join`), deny all links, open every component with `O_NOFOLLOW` at use time (`Jail`) | server path handling (`server/server.py`) | traversal, symlink and link-swap race attempts by anyone, including alice |
+We protect the flag through DAC, MAC and RBAC. The `/admin` folder belongs to
+alice:admins with mode 0700, which keeps bob and eve out through DAC. MAC also
+blocks them because `/admin` is confidential, above both of their clearances.
+For RBAC, only the admin role has a rule covering `/admin`. MAC also prevents
+alice from writing a copy to a folder with a lower label.
 
-Access is granted only when DAC ∧ MAC ∧ RBAC all allow it, and anything not covered is denied. The gate checks
-DAC first and reports the first denial, so the audit log names DAC for bob's and eve's reads. Running each
-check of `Policy` on its own shows the overlap, since each one denies bob and eve by itself:
+Path handling is checked separately in `server/server.py`. Before checking the
+policy, `safe_join` cleans the path and rejects links. The `Jail` code uses
+`O_NOFOLLOW` when opening each path component, so swapping in a symlink after
+the first check should not redirect the operation.
+
+All three policy checks have to allow a request. DAC runs first, so it is the
+reason recorded in the log when bob or eve tries to read the flag. We also ran
+the checks separately to see what each one would do:
 
 | Request | DAC | MAC | RBAC |
 | --- | --- | --- | --- |
@@ -50,19 +59,19 @@ check of `Policy` on its own shows the overlap, since each one denies bob and ev
 If one layer is misconfigured, the other two still keep bob and eve away from the flag. The rows in `data/` that
 matter are collected in `ctf/flag_config.py` (`REQUIRED_POLICY`).
 
-## 3. Attack surface
+## Ways we tried to get around the checks
 
-| Surface | Requests | What an attacker controls |
-| --- | --- | --- |
-| Authentication | SSH password auth | username, password guesses |
-| Path names | REALPATH, STAT/LSTAT, OPENDIR, MKDIR, OPEN | any byte string: `..`, backslashes, NUL, invalid UTF-8, case |
-| Handles | READ, WRITE, FSTAT, READDIR, CLOSE | handle tokens, including other sessions' or closed ones |
-| Open flags | OPEN `pflags` | combinations such as READ+TRUNC |
-| Filesystem links | (no SYMLINK request exists) | a link planted by a misconfiguration or local actor |
-| Concurrency | any path request | timing between the check and the use |
-| Policy itself | all | an insider allowed to read who tries to leak |
+We looked at password authentication, path names, file handles and OPEN flags.
+The client can send unusual paths, guessed handles or flag combinations such
+as READ+TRUNC. We also checked whether alice could copy the flag into a folder
+that other users could read.
 
-## 4. How a naive design exposes the flag
+There is no SFTP SYMLINK request in our server, so the symlink tests assume a
+link was already placed on disk by a local user or a setup mistake. For the
+race test, a local thread repeatedly swapped a normal file with a link while
+the client tried to read it.
+
+## How a naive design exposes the flag
 
 We pointed the same client at the unmodified starter (`ctf/naive/starter_main.py`), using the same jail.
 
@@ -78,10 +87,11 @@ We pointed the same client at the unmodified starter (`ctf/naive/starter_main.py
 The starter did stop `/../../etc/passwd` and a symlink pointing outside the jail, because `realpath` plus its prefix
 check catch escapes from the jail. Within the jail it checks nothing.
 
-## 5. Attack attempts against the hardened server
+## Results on our server
 
-Every attempt went through the raw SFTP channel in `client/client.py`, which let us send packets a normal client
-never would. Full results are in `docs/evidence/ctf-attacks.md`.
+We sent the attempts through the raw SFTP channel in `client/client.py`. This
+let us try malformed requests and unusual flag combinations directly. The full
+output is in `docs/evidence/ctf-attacks.md`; the table below groups the results.
 
 | Class | Attempts | Result | Check that stops it |
 | --- | --- | --- | --- |
@@ -94,7 +104,7 @@ never would. Full results are in `docs/evidence/ctf-attacks.md`.
 | A7 Insider exfiltration | alice, who may read the flag, creates `/public/flag_copy.txt` and `/projects/flag_copy.txt` | PERMISSION_DENIED (2/2) | MAC no write down: confidential subject cannot write public or internal objects |
 | A8 Symlink-swap race | a thread swaps `/public/race.txt` between a plain file and a link to the flag (416 swaps) while eve reads it 300 times | 0 leaks (232 denied, 68 got the harmless file) | after the gate, `Jail.parent` walks directories with `O_DIRECTORY` + `O_NOFOLLOW` descriptors and opens the leaf with `O_NOFOLLOW` (lines 208-236), so a link swapped in after the check cannot be followed |
 
-## 6. Evidence and how auditing helped
+## What we could see in the audit log
 
 Each authorization decision goes into `audit.jsonl` as one JSON object with `timestamp`, `user`, `op`, `path`,
 `allowed` and `reason`. Excerpt from the hardened run (`docs/evidence/ctf-audit.jsonl`, timestamps omitted):
@@ -112,9 +122,10 @@ Filtering the log for denied requests under `/admin` lists eve's attempts in tim
 `jq -c 'select(.allowed==false and (.path|startswith("/admin")))' audit.jsonl`. Her traversal attempt shows up
 under its canonical path `/admin/ctf/flag.txt`, because canonicalization runs before the gate.
 
-The `reason` field names the model that denied each request, which made it easy to see that alice's copy was
-stopped by MAC while every other user was already stopped by DAC. Because only the first denial is logged, the
-per-layer table in section 2 was produced by calling the three checks directly.
+The reasons helped us check why an attempt failed. For example, MAC stopped
+alice from writing a copy, whereas DAC already stopped bob and eve from
+reading the flag. The log only gives the first denial, which is why we called
+the checks separately for the table in the flag setup above.
 
 An insider leak looks like the A7 records: alice, who is allowed to read the flag, tries to write copies of it to
 `/public` and `/projects`, and both writes are logged as denied.
@@ -124,18 +135,24 @@ handles) leave no audit record, because the server raises before it calls `autho
 A8 are therefore visible only in the client's STATUS replies. We recommend that the server write one audit record
 for each protocol-level rejection (`allowed: false`, `reason: "path validation"`), so these attacks can be detected too.
 
-## 7. Limitations
+## Limitations
 
-- Final attack runs use real AuthService with temporary salted scrypt records; deployed passwords are not needed. Earlier runs used one-run callbacks.
-- Tested on macOS (Python 3.14, AsyncSSH 2.24.1). The Windows code path (reparse points, case folding) is not
-  exercised by these attacks.
-- A8 is a probabilistic test. 0 leaks in 300 reads shows the defence holds in practice; it does not prove a leak
-  is impossible. The argument for that is the design: the leaf is opened with `O_NOFOLLOW` relative to a
-  directory descriptor that was itself opened without following links.
-- A privileged local process on the server machine can still read the file directly; the CTF covers the SFTP
-  interface only.
+The final attack runs used the real AuthService with temporary salted scrypt
+records, so we did not need the deployed passwords. The earlier runs used
+one-run password callbacks and did not check the final authentication code.
 
-## 8. Reproduce
+We ran these attacks on macOS with Python 3.14 and AsyncSSH 2.24.1. This run
+does not check the Windows handling of reparse points or case folding. Also,
+getting zero leaks in 300 race-test reads is only the result of that run. It
+does not prove that every possible race is covered. The use of `O_NOFOLLOW`
+and directory descriptors is the main reason we expect link swaps to be
+blocked.
+
+The tests cover access through SFTP. Someone with enough local privileges on
+the server machine could still read the file directly. Another gap is that
+requests rejected before the policy check do not appear in the audit log.
+
+## Running the tests again
 
 ```text
 pip install asyncssh
@@ -146,18 +163,18 @@ python3 ctf/setup_flag.py             # plant the flag in server/sftp_root for a
 To use deployed password records instead of temporary hashes, set `CTF_PASSWORD_ALICE`, `CTF_PASSWORD_BOB` and `CTF_PASSWORD_EVE` and run
 `python3 ctf/run_attacks.py --auth real`. The naive run needs port 2222 free.
 
-## 9. WP5 integration verification
+## Checks after integrating authentication
 
 After WP2 arrived, WP5 connected the attack runner to the real `AuthService`.
 The 22 November integration rerun used temporary salted scrypt password records
-for alice, bob and eve, real DAC/MAC/RBAC policy and host-verified SSH. The
-hardened server reported zero attack problems and an intact flag; the course
-starter exposed or destroyed the flag in four attacks. The current transcript
+for alice, bob and eve, real DAC/MAC/RBAC policy and host-verified SSH. Our server
+blocked the attacks and the flag was still intact afterwards. The course
+starter exposed or destroyed it in four attacks. The current transcript
 and audit are in `docs/evidence/ctf-attacks.md` and `ctf-audit.jsonl`.
 Earlier one-run-password evidence described above was a protocol/policy fixture;
 it did not verify password hashing. The integration rerun and WP5 lockout tests
-add that coverage. This PDF does not claim that a timed race test proves freedom
-from every possible race.
+check authentication as well. The race-test result still has the limits
+described above.
 
 We used AI to assist with understanding the assignment, integration and debugging,
 client and CTF development, documentation, and creating test cases. We did not

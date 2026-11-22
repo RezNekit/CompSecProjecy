@@ -1,11 +1,12 @@
-# Dream Team 1 - SFTP over SSH: DAC, MAC and RBAC
+# Dream Team 1 - SFTP project
 
-A raw SFTP v3 server and client using AsyncSSH for SSH transport. File-protocol
-packets, authorization and authentication are implemented in this repository.
+For this project we built an SFTP client and server with DAC, MAC and RBAC access
+control. AsyncSSH handles the SSH connection. We wrote the SFTP packet handling
+and the authentication and authorization logic in the repository.
 
-## Install and run
+## Running it
 
-Python 3.12 is the CI baseline. On macOS/Linux:
+We use Python 3.12 in CI. On macOS or Linux, run:
 
 ```sh
 python3 -m venv .venv
@@ -16,7 +17,7 @@ ssh-keygen -t ed25519 -N '' -f server/ssh_host_ed25519_key
 .venv/bin/python server/server.py
 ```
 
-On Windows PowerShell:
+On Windows PowerShell, use:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -27,26 +28,30 @@ ssh-keygen -t ed25519 -f server/ssh_host_ed25519_key
 .venv\Scripts\python server/server.py
 ```
 
-For the Windows host-key prompt, leave the passphrase empty. Generate the key
-once and preserve it locally; it is excluded from Git and the submission.
-`make_users.py` prompts privately for passwords and confirms them. Do not commit
-plaintext passwords. The shipped users.json contains valid salted scrypt hashes
-of discarded random passwords, so **set local passwords before logging in**.
-Running the tool without arguments updates alice, bob and eve to match the policy.
+Leave the Windows key passphrase empty when prompted. The host key only needs
+to be generated once. Keep it locally; it should not be committed or submitted.
 
-Startup logs each loaded data filename and entry count, then
-`SFTP listening on 127.0.0.1:2222`. Missing/malformed data or a missing/invalid
-Ed25519 key causes a readable error and exit status 1.
+The password script asks you to set passwords for alice, bob and eve. Run it
+before trying to log in: the hashes already in users.json were made from random
+passwords that were not saved. Passwords are entered privately and only salted
+scrypt hashes go into the file.
 
-In another terminal (use the Windows interpreter path on Windows):
+When the server starts, it logs the loaded data files and then prints
+`SFTP listening on 127.0.0.1:2222`. If a data file is missing or invalid, or the
+host key cannot be loaded, it prints an error and stops.
+
+Open another terminal and start the client. On Windows, replace the interpreter
+path with `.venv\Scripts\python`.
 
 ```sh
 .venv/bin/python client/client.py --host 127.0.0.1 --port 2222 --username bob
 ```
 
-Verify the displayed fingerprint against your server key before accepting TOFU.
-Use `ssh-keygen -lf server/ssh_host_ed25519_key.pub` to inspect it. A saved key
-mismatch aborts the client. Commands:
+On the first connection, compare the fingerprint with
+`ssh-keygen -lf server/ssh_host_ed25519_key.pub` before accepting it. The client
+saves the trusted key and refuses a later connection if that key changes.
+
+For example, bob can run:
 
 ```text
 pwd
@@ -58,87 +63,73 @@ get /projects/demo/README.md README.copy.md
 quit
 ```
 
-`pwd` prints `/`; upload/download should preserve the bytes. The CLI also offers
-`cd`, help and clear permission/missing-file errors. OpenSSH interoperability:
-`sftp -P 2222 bob@127.0.0.1`. Some OpenSSH versions have no `stat` CLI command;
-our raw protocol tests exercise STAT, LSTAT and FSTAT directly.
+`pwd` starts at `/`. The downloaded copy should have the same bytes as the
+upload. The client also supports `cd` and `help`. You can connect with OpenSSH
+using `sftp -P 2222 bob@127.0.0.1`, although some versions do not offer a `stat`
+command in their CLI. Our tests send STAT, LSTAT and FSTAT packets directly.
 
-## Users and Access Control Design
+## Users and permissions
 
-| User | Role | Clearance | Intended access |
+| User | Role | Clearance | Access |
 | --- | --- | --- | --- |
-| alice | admin | confidential | Read all areas; write only confidential /admin (no write down). |
-| bob | analyst | internal | Read public; read/write /projects and /demo; no /admin access. |
-| eve | guest | public | Read /public and list root; explicit denial on /public/archive. |
+| alice | admin | confidential | Can read all areas, but can only write in /admin because of no write down. |
+| bob | analyst | internal | Can read /public and read/write /projects and /demo. Cannot access /admin. |
+| eve | guest | public | Can list root and read /public, except /public/archive. |
 
-See [policy.md](policy.md) for operation mapping, DAC modes and directory execute
-bits, inheritance, MAC no-read-up/no-write-down, RBAC matrix, composition and audit.
-Data is static and loaded at startup. Change configuration on disk and restart.
-Six files are loaded: users.json, user_roles.json, role_perms.csv, mac_labels.json,
-dac_owners.csv and groups.json. The loader validates cross-references and exposes
-read-only data. Authorization requires DAC AND MAC AND RBAC and defaults to deny.
-All auth and policy records use `timestamp,user,op,path,allowed,reason`, with
-optional `model,session` fields, in `server/audit.jsonl` by default. No password
-text is logged. JSONL escaping prevents newlines from forging records. Failure
-to write a decision prevents access.
+The full access-control design is in [policy.md](policy.md). A request needs
+permission from all three models. Users and permissions come from the six files
+in `data/`; changes take effect after restarting the server. The loader checks
+the files and their references before the server accepts connections.
 
-Password verification uses salted scrypt and constant-time comparison; unknown
-users incur a dummy hash. Five failures within 300 seconds lock that username
-for 300 seconds; failed checks delay 0.25 seconds. Successful login clears its
-failure history. Lockout state is in memory and resets on restart. Password
-hashing and delays run outside the SSH event loop.
+Five failed logins within five minutes lock that username for five minutes.
+Failed checks also have a 0.25 second delay. A successful login clears the
+failure count. The lockout is held in memory, so restarting clears it. Unknown
+usernames still go through a dummy scrypt calculation.
 
-## Tests, CTF and submission
+Authentication and policy decisions are written to `server/audit.jsonl`, with
+the timestamp, user, operation, path, result and reason. Passwords are not logged.
+If a decision cannot be logged, access is refused.
+
+## Tests and CTF
 
 ```sh
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest tests -q
 .venv/bin/python ctf/run_attacks.py
-.venv/bin/python tools/check_submission.py
 ```
 
-The attack runner uses temporary salted scrypt records by default and runs only
-against local temporary servers/jails. Its naive baseline uses the public course
-starter credential as an intentionally vulnerable fixture, never as a production
-credential. Port 2222 must be free for that baseline. It updates the CTF evidence.
-The flag is `FLAG{group01_sftp_wins}` at `/admin/ctf/flag.txt`; the group identifier is confirmed as Dream Team 1. See [CTF_writeup.pdf](CTF_writeup.pdf), its
-[Markdown source](docs/CTF_writeup.md), and [client notes](docs/client-ctf.md).
+We ran the 48 tests locally on macOS ARM64 with Python 3.14 and AsyncSSH
+2.24.1, and they all passed. They also passed with Python 3.12 on Windows,
+macOS and Linux in
+[CI run 45042041446](https://github.com/RezNekit/CompSecProjecy/actions/runs/45042041446),
+on commit fef526b. The results for those three systems came from CI; each
+member did not run them separately.
+Windows symlink tests need permission to create links, which can require
+Developer Mode.
 
-| Platform | Observed result |
-| --- | --- |
-| macOS ARM64, Python 3.14, AsyncSSH 2.24.1 | 48 tests passed locally; full startup, client and lockout included. |
-| Windows, Python 3.12 | CI passed on the integrated code (run 45042041446). No teammate-run result claimed. |
-| Linux, Python 3.12 | CI passed on the integrated code (run 45042041446). No teammate-run result claimed. |
+The CTF flag is `FLAG{group01_sftp_wins}`, stored at `/admin/ctf/flag.txt` for
+Dream Team 1. The attack script starts temporary local servers and uses temporary
+salted password hashes. It also tests the original starter, which needs port
+2222 to be free. Its public bob/test credential is only used for that vulnerable
+comparison. The results are in [CTF_writeup.pdf](CTF_writeup.pdf), with the
+[editable report](docs/CTF_writeup.md) and [client notes](docs/client-ctf.md) in docs.
 
-CI runs the same suite on all three OSes. The integrated code passed on all
-three in [run 45042041446](https://github.com/RezNekit/CompSecProjecy/actions/runs/45042041446)
-(commit fef526b). Symlink tests require OS permission;
-on Windows that may need Developer Mode. A skipped symlink test is reported
-separately and is not evidence of Windows symlink enforcement.
-
-See [AI-use disclosure](docs/ai-disclosure.md) for the team's statement.
-After review and committing the complete tree:
+To make the submission zip after committing the files, run:
 
 ```sh
 .venv/bin/python tools/check_submission.py --zip output/submission.zip
 ```
 
-To rebuild the PDF, install `requirements-docs.txt` and run
-`python tools/build_ctf_pdf.py`; inspect the rendered pages before committing.
+This checks a fresh checkout, runs the tests and creates a zip with file hashes.
+It leaves out untracked files, including the local host key and runtime log.
+The zip still needs to be checked and uploaded to the course portal manually.
+To rebuild the CTF PDF, install `requirements-docs.txt` and run
+`python tools/build_ctf_pdf.py`.
 
-The packager checks the committed tree in a fresh local clone, reruns tests,
-excludes keys/runtime data and adds an SHA-256 manifest. It never uploads to the
-course portal. Open and inspect the final zip before submitting.
+There are still a few things we have not implemented. REMOVE, RENAME and
+SETSTAT are missing, and changing users requires a server restart. Ownership of newly created
+files is kept in memory and falls back to the configured defaults after a restart.
+Requests rejected during path validation do not reach the policy audit log.
+The server only listens on loopback, and this project does not protect against
+someone who already has local access to edit the jail or configuration.
 
-## Known limitations
-
-- REMOVE, RENAME and SETSTAT are unsupported. No runtime user/role editing.
-- Runtime ownership inheritance is in memory; restart falls back to prefix defaults.
-- Paths rejected by safe_join before authorization do not produce a policy audit
-  entry. Valid paths denied by policy do. CTF evidence includes both cases.
-- MAC metadata reads can prevent browsing a high-labelled path through the CLI;
-  raw low-clearance read attempts are still rejected at the gate.
-- Server binds loopback only. Local users who can modify the jail/configuration
-  are outside the remote SFTP threat model. Windows junction race coverage is
-  described in the earlier WP1 evidence, not newly established by macOS tests.
-- The course brief and task division list different deadlines; verify the course
-  deadline. Team review and course upload remain human actions.
+Our AI-use statement is in [docs/ai-disclosure.md](docs/ai-disclosure.md).

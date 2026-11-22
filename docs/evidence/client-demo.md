@@ -1,16 +1,17 @@
-# Client demo transcript
+# Client demo
 
-Generated 22 November 2026 with `client/client.py --batch` against `server/server.py`, started through
-`serve()` with the project's policy (`server/policy.py` loaded from `data/`) and the flag planted by
-`ctf/setup_flag.py`. `server/auth.py` is not in the repository yet, so the demo server checked a fixed
-demo password for bob. User `bob` = role analyst, clearance internal, group analysts. The client ran with
-a scratch known_hosts file, shown here as `client/known_hosts`.
+This transcript is from 22 November 2026. The client ran in batch mode against
+our server with the policy loaded from data/ and the CTF flag in place. At the
+time, auth.py had not been added yet, so this particular demo used a fixed test
+password for bob. It is not a test of the final password hashing or lockout.
+Bob had the analyst role, internal clearance and membership of analysts. The
+known_hosts file was temporary; its path is shortened below.
 
-Shows: TOFU host-key prompt and pinning, every required command (`pwd`, `ls`, `mkdir`, `stat`, `get`,
-`put`, `quit`) plus `cd`, clear error messages for denied and missing paths, failed login, and the abort
-when the server's host key changes. The downloaded file was byte-identical to the upload (`cmp`).
-`ls /` hides `admin/`: bob may not stat it (DAC 0700, MAC confidential, no RBAC row), so the server
-filters it from READDIR.
+We tried all the required client commands, plus cd. After downloading the
+file, we compared it with the upload using cmp and they matched. Bob could
+not see admin in the root listing because he did not have permission to stat
+it. We then tried a wrong password and a changed host key; both connections
+were rejected, as shown below.
 
 ```text
 $ python3 client/client.py --port 2222 --username bob --batch cmds.txt

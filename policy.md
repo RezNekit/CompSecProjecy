@@ -1,12 +1,11 @@
 # Access Control Design
 
-Every file operation on our SFTP server goes through one function,
-`authorize(user, op, path)` in `server/policy.py`. It combines three access
-control models (DAC, MAC and RBAC), and a request only goes through if all three
-allow it. Anything we did not explicitly allow is denied, and every decision is
-written to an audit log.
+We use `authorize(user, op, path)` in `server/policy.py` to check DAC, MAC and
+RBAC before allowing a file operation. All three have to agree. If no rule
+allows a request, we deny it. Each policy decision is also written to the audit
+log so we can see why something was allowed or blocked.
 
-## Operations covered
+## Requests and checks
 
 Before asking the policy, the server turns each SFTP request into one of six
 operations:
@@ -29,19 +28,16 @@ implemented, so clients cannot delete files or change permissions.
 Unknown users, unknown operations and malformed paths are refused before any
 model runs. If the policy raises an error, the server treats it as a denial.
 
-## Enforcement point
-
 The server takes the username from the SSH session, never from the request. For
 every path it first runs `safe_join`, which turns what the client sent into a
 clean path inside the jail (`server/sftp_root`), such as `/projects/a.txt`. It
 rejects `..` above the root, symlinks, NUL bytes, backslashes and Windows device
 names. Only then does it call `authorize`, and only if that allows the request
-does it open, list, read,
-write or create anything. Files are opened without following symlinks, so a
+does it open, list, read, write or create anything. Files are opened without following symlinks, so a
 link swapped in after the check cannot redirect the server.
 
-The policy also refuses any path that is not already clean. This is a second
-line of defence: the rules match paths as text, so a path like
+The policy also refuses paths that are not already clean. We check this again
+because the rules match paths as text, so a path like
 `/projects/../admin` would otherwise be judged as if it were inside `/projects`.
 
 ## DAC
@@ -50,10 +46,9 @@ Each path has an owner, a group and Unix permission bits. Defaults are set per
 folder in `data/dac_owners.csv`, and a path without its own line uses the
 closest folder above it. Group membership is in `data/groups.json`.
 
-We follow the Unix rule: if you own the path you get the owner bits, otherwise
-the group bits if you are in its group, otherwise the "other" bits. The lecture
-describes a rule where the most permissive right wins, but the assignment asks
-for Unix-style modes, so we use the Unix one.
+For DAC we use Unix-style permissions, as requested in the assignment. The
+owner bits apply to the owner, the group bits apply to other users in that
+group, and everyone else gets the other bits.
 
 On a file, r means read and w means write. On a folder, r lets you list it, w
 lets you create things in it, and x lets you go inside. You need x on every
@@ -100,18 +95,17 @@ matching row beats every allow.
 | admin | `/` | everything |
 | user:eve | `/public/archive` | nothing (deny) |
 
-## Putting them together
+## How the rules work together
 
-The final decision is DAC and MAC and RBAC. If any one of them says no, the
-answer is no. They are checked in that order, and the audit log records the
-first one that refused.
+DAC, MAC and RBAC all have to allow the request. We check them in that order
+and record the first refusal in the audit log.
 
 | | MAC allows | MAC denies |
 | --- | --- | --- |
 | **DAC allows** | bob writes `/projects/plan.txt`: allowed | alice writes `/projects/plan.txt`: denied (write down) |
 | **DAC denies** | bob reads `/public/archive/old.txt`: denied (folder is 0750 admins) | eve reads `/admin/flag.txt`: denied |
 
-No single model can be used to get around the others. alice owns `/projects`,
+This matters when the models give different answers. alice owns `/projects`,
 but MAC still stops her writing there. bob's analyst role lets him read
 `/public`, but DAC still keeps him out of `/public/archive`.
 
@@ -129,7 +123,7 @@ symlink, never reach the policy, so they are refused but not logged.
 {"timestamp": "2026-11-21T18:39:06+00:00", "user": "alice", "op": "write", "path": "/projects/plan.txt", "allowed": false, "reason": "MAC: no write down"}
 ```
 
-## Users
+### User examples
 
 | User | Role | Clearance | What they can do |
 | --- | --- | --- | --- |
@@ -137,20 +131,20 @@ symlink, never reach the policy, so they are refused but not logged.
 | bob | analyst | internal | read `/public` (except `/public/archive`), read and write `/projects` and `/demo` |
 | eve | guest | public | list `/` and read `/public`, except `/public/archive` |
 
-## Data files and tests
+## Testing and limitations
 
-The five files in `data/` are loaded when the server starts, and each one is
+The six data files are loaded when the server starts, and each one is
 logged. If a file is missing or broken, the server refuses to start and
 logs what is wrong. Users, roles and labels only change by editing the files and
 restarting. One limitation: ownership of files created while the server runs is
 kept in memory, so after a restart those files fall back to the owner of
 the closest folder listed in `data/dac_owners.csv`.
 
-`pytest -q` runs the complete suite; `tests/test_policy.py` contains 10 policy tests: three for DAC (owner,
-group and other; the folder x bit; inheritance), two for MAC, two for RBAC
-(analyst versus admin; deny overrides), two for combined decisions and default
-deny (including traversal attempts), and one for the audit log.
+We run the full suite with `python -m pytest tests -q`. The 10 tests in
+`tests/test_policy.py` focus on the policy. Three check DAC permissions, folder
+access and inheritance. Two check MAC, and two check roles and deny overrides
+in RBAC. The remaining tests check combined decisions, default denial and
+traversal attempts, as well as the audit log.
 
-Startup calls `loader.load_all()` to validate all six static files, constructs
-`AuthService`, and calls `policy.init()` before accepting SSH connections.
-See README for integrated test results.
+At startup we load and validate the data, set up authentication and initialize
+the policy before accepting connections. The README has the full test results.
