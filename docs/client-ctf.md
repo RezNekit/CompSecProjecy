@@ -40,10 +40,11 @@ implement them), no recursive transfers.
 ## CTF
 
 ```text
-python3 ctf/setup_flag.py      # plant FLAG{groupXX_sftp_wins} at /admin/ctf/flag.txt in server/sftp_root
+python3 ctf/setup_flag.py      # plant FLAG{group01_sftp_wins} at /admin/ctf/flag.txt in server/sftp_root
 python3 ctf/run_attacks.py     # run all attacks on the hardened and the naive server, write docs/evidence/
 ```
 
+Flag design, protections, attacks and evidence: `CTF_writeup.pdf` (source `docs/CTF_writeup.md`).
 Attack results and audit log: `docs/evidence/ctf-attacks.md`, `docs/evidence/ctf-audit.jsonl`.
 Policy entries in `data/` that protect the flag: `ctf/flag_config.py`.
 

@@ -1,6 +1,6 @@
 """CTF: where the flag lives and which policy entries protect it.
 
-setup_flag.py and run_attacks.py read these values from here.
+setup_flag.py, run_attacks.py and the write-up take these values from here.
 """
 FLAG = "FLAG{group01_sftp_wins}"
 FLAG_PATH = "/admin/ctf/flag.txt"      # jail-relative POSIX path

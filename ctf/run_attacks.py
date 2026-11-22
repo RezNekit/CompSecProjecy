@@ -200,7 +200,7 @@ async def hardened_attacks(t: Target):
     t.record("A3", "Directory enumeration", "eve", f"STAT {FLAG_PATH}", out, False, "info")
 
     # A4: symlinks planted inside the jail. The server has no SYMLINK request, so
-    # these stand in for a misconfiguration or someone with local access.
+    # they simulate a misconfiguration or someone with local access.
     for user, path in (("eve", "/public/link_to_flag"), ("alice", "/public/link_to_flag"),
                        ("eve", "/public/link_out/outside-secret.txt")):
         out, leak = await try_read(s[user], path)
