@@ -2,8 +2,12 @@ import csv
 import json
 import logging
 import posixpath
-from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    from .audit import write_audit
+except ImportError:
+    from audit import write_audit
 
 log = logging.getLogger("policy")
 
@@ -68,10 +72,8 @@ class Policy:
                     allowed, reason = False, why
                     break
 
-        record = {"timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                  "user": user, "op": op, "path": path, "allowed": allowed, "reason": reason}
-        with open(self.audit_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, default=repr) + "\n")
+        write_audit(user=user, op=op, path=path, allowed=allowed, reason=reason,
+                    audit_path=self.audit_path)
         return allowed, reason
 
     def check_dac(self, user, op, path):

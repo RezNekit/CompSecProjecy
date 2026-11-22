@@ -11,7 +11,7 @@ import secrets
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = BASE_DIR / "data" / "users.json"
 
-DEFAULT_USERS = ["alice", "bob", "carol", "dave", "eve"]
+DEFAULT_USERS = ["alice", "bob", "eve"]
 DEFAULT_N = 16384
 DEFAULT_R = 8
 DEFAULT_P = 1

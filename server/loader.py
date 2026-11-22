@@ -27,14 +27,15 @@ def _read_json(path: Path) -> object:
     if not path.exists():
         raise DataError(f"Missing required policy file: {path}")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        _check_size(path)
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicates_keys)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise DataError(f"Malformed JSON in {path.name}: {exc}")
 
 def _check_size(path: Path) -> None:
     if not path.exists():
         raise DataError(f"Missing required: {path.name}")
-    if path.stat().st_size() > MAX_FILE_SIZE:
+    if path.stat().st_size > MAX_FILE_SIZE:
         raise DataError(f"Problems with {path.name}: larger than {MAX_FILE_SIZE} bytes")
 
 def _no_duplicates_keys(pairs):
@@ -53,6 +54,7 @@ def _read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if not path.exists():
         raise DataError(f"Missing required file: {path}")
     try:
+        _check_size(path)
         with path.open("r", encoding="utf-8", newline="") as fh:
             reader = csv.DictReader(fh)
             if not reader.fieldnames:
@@ -80,21 +82,21 @@ def _read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
                     rows.append(cleaned)
 
             return headers, rows
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, csv.Error) as exc:
         raise DataError(f"Problems with CSV in {path.name}: {exc}") from exc
 
 
 def load_users(data_dir: Path = DATA_DIR) -> Mapping[str, Mapping[str, object]]:
     path = data_dir / "users.json"
     raw = _read_json(path)
-    if not isinstance(raw, list):
+    if not isinstance(raw, list) or not raw:
         raise DataError("Problems with users.json: expected a JSON array")
 
 
     required_fields={"username", "salt", "password_hash", "n", "r", "p", "dklen"}
     users = {}
     for item in raw:
-        if not isinstance(item, dict) or not required_fields.issubset(item.keys):
+        if not isinstance(item, dict) or not required_fields.issubset(item.keys()):
             raise DataError(f"Problems with user entry in users.json: {item}")
         username=item["username"]
         if not isinstance(username, str) or not username.strip():
@@ -102,6 +104,17 @@ def load_users(data_dir: Path = DATA_DIR) -> Mapping[str, Mapping[str, object]]:
 
         if username in users:
             raise DataError(f"Duplicated user: {username}")
+        try:
+            salt = base64.b64decode(item["salt"], validate=True)
+            digest = base64.b64decode(item["password_hash"], validate=True)
+            n, r, p, dklen = (item[key] for key in ("n", "r", "p", "dklen"))
+            if (any(type(v) is not int for v in (n, r, p, dklen))
+                    or n < 2 or n > 32768 or n & (n - 1)
+                    or not 1 <= r <= 8 or not 1 <= p <= 4
+                    or not 16 <= dklen <= 64 or len(salt) < 16 or len(digest) != dklen):
+                raise ValueError("invalid scrypt parameters or hash lengths")
+        except (ValueError, TypeError, binascii.Error):
+            raise DataError(f"Invalid password record for {username!r}") from None
         users[username] = MappingProxyType(dict(item))
 
 
@@ -123,7 +136,7 @@ def load_user_roles(known_users: Mapping[str, object], data_dir: Path = DATA_DIR
             raise DataError(f"Problems with user_roles.json: uknown user {username!r}")
 
 
-        if (not isinstance(roles, list) or not roles or not all(isinstance(role,str)) and role.strip() for role in roles):
+        if not isinstance(roles, list) or not roles or not all(isinstance(role, str) and role.strip() for role in roles):
             raise DataError(f"Problems with user_roles.json: user {username!r} needs a non-empty list of roles")
 
         if len(set(roles)) != len(roles):
@@ -131,7 +144,7 @@ def load_user_roles(known_users: Mapping[str, object], data_dir: Path = DATA_DIR
 
         user_roles[username] = tuple(roles)
 
-    missing = sorted(set(known_users)) - set(user_roles)
+    missing = sorted(set(known_users) - set(user_roles))
 
     if missing:
         raise DataError(f"Problems with user_roles.json: no roles for {', '.join(missing)}")
@@ -178,7 +191,7 @@ def load_mac_labels(known_users: Mapping[str, object], data_dir: Path = DATA_DIR
 
 
     levels = raw["levels"]
-    if (not isinstance(levels, list) or len(set(levels)) != len(levels) or set(levels) != VALID_MAC_LEVELS):
+    if (not isinstance(levels, list) or len(set(levels)) != len(levels) or levels != ["public", "internal", "confidential"]):
         raise DataError(f"Problems with mac_labels.json: levels must list public, internal, confidential once each, lowest first")
 
     paths = raw["paths"]
@@ -186,11 +199,11 @@ def load_mac_labels(known_users: Mapping[str, object], data_dir: Path = DATA_DIR
     if (not isinstance(paths, dict) or "/" not in paths):
         raise DataError(f"Problems with mac_labels.json: invalid path {path!r}")
     for prefix, level in paths.items():
-        if levels not in VALID_MAC_LEVELS:
+        if level not in VALID_MAC_LEVELS:
             raise DataError(f"Problems with mac_labels.json: path {prefix} has uknown levels {level!r}")
-        if(not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or prefix.startswith("\\" or '\\' in prefix)):
+        if(not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or (prefix.startswith("//") or "\\" in prefix or "\x00" in prefix)):
             raise DataError(f"Problems with mac_labels.json: invalid path {prefix!r}")
-        if levels not in VALID_MAC_LEVELS:
+        if level not in VALID_MAC_LEVELS:
             raise DataError(f"Problem with mac_labels.json: path {prefix} has uknown level {level!r}")
 
     users = raw["users"]
@@ -227,12 +240,12 @@ def load_role_permissions(user_roles: Mapping[str, tuple[str, ...]], data_dir: P
 
     for roles in user_roles.values():
         for role in roles:
-            known_roles.append(role)
+            known_roles.add(role)
 
     rules = []
     seen = set()
 
-    for line, row in rows:
+    for line, row in enumerate(rows, 2):
         subject = row["role"]
         prefix = row['prefix']
 
@@ -242,15 +255,15 @@ def load_role_permissions(user_roles: Mapping[str, tuple[str, ...]], data_dir: P
 
         elif subject not in known_roles:
             raise DataError(f"Problems with roles_perms.csv row {line}: role {subject!r} is not assigned to anyone")
-        if (not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or prefix.startswith("\\" or '\\' in prefix)):
+        if (not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or (prefix.startswith("//") or "\\" in prefix or "\x00" in prefix)):
                 raise DataError(f"Problems with role_perms.csv: invalid path {prefix!r}")
 
         cells = [row[action] for action in actions]
 
         for cell in cells:
-            if cell not in ("", "allow", "deny"):
+            if cell not in ("", "x", "allow", "deny"):
                 raise DataError(f"Problems with role_perms.csv row {line}: {cell!r} must be allow, deny or empty")
-        if not any(cell):
+        if not any(cells):
             raise DataError(f"Problems with role_perms.csv row {line}: rule does nothing")
         if (subject, prefix) in seen:
             raise DataError(f"Probems with role_perms.csv row {line}: duplicate rule for {subject} on {prefix}")
@@ -258,11 +271,11 @@ def load_role_permissions(user_roles: Mapping[str, tuple[str, ...]], data_dir: P
         rules.append(MappingProxyType(row))
 
 
-        if not rules:
-            raise DataError("Problems with role_perms.csv no rules")
+    if not rules:
+        raise DataError("Problems with role_perms.csv: no rules")
+    logger.info("loaded %s (%d entries)", path.name, len(rules))
+    return tuple(rules)
 
-        logger.info("loaded %s (%d entries)", path.name, len(rules))
-        return tuple(rules)
 
 def load_dac_owners(known_users: Mapping[str, object], groups: Mapping[str, tuple[str, ...]], data_dir: Path=DATA_DIR) -> tuple[Mapping[str, object], ...]:
     path_dir = data_dir / "dac_owners.csv"
@@ -273,9 +286,9 @@ def load_dac_owners(known_users: Mapping[str, object], groups: Mapping[str, tupl
     owners = []
     seen = set()
 
-    for line, row in rows:
+    for line, row in enumerate(rows, 2):
         prefix = row["prefix"]
-        if (not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or prefix.startswith("\\" or '\\' in prefix)):
+        if (not prefix.startswith("/") or posixpath.normpath(prefix) != prefix or (prefix.startswith("//") or "\\" in prefix or "\x00" in prefix)):
                         raise DataError(f"Problems with dac_owners.csv: invalid path {prefix!r}")
         if prefix in seen:
             raise DataError(f"Problems with dac_owners.csv row {line}: duplicate prefix")
@@ -285,9 +298,9 @@ def load_dac_owners(known_users: Mapping[str, object], groups: Mapping[str, tupl
         if not row["owner"] or not row["group"]:
             raise DataError(f"Problems with dac_owners.csv row {line}: owners and groups must not be empty")
         if row["owner"] not in known_users:
-            logger.warning(f"dac_owners.csv row {line}: owner {row['owner']} is not a login user")
+            raise DataError(f"dac_owners.csv row {line}: unknown owner")
         if row["group"] not in groups:
-            logger.warning(f"dac_owners.csv row {line}: group {row['group']} is not in groups.json")
+            raise DataError(f"dac_owners.csv row {line}: unknown group")
         mode = row["mode"]
         if len(mode) not in (3,4) or any(c not in "01234567" for c in mode):
             raise DataError(f"Problems with dac_owners.csv row {line}: must be octal(e.g: 0750)")
@@ -304,7 +317,7 @@ def load_dac_owners(known_users: Mapping[str, object], groups: Mapping[str, tupl
 
 
 
-def laod_all(data_dir: Path = DATA_DIR) -> Mapping[str, object]:
+def _load_all(data_dir: Path = DATA_DIR) -> Mapping[str, object]:
     data_dir = Path(data_dir)
     users = load_users(data_dir)
     user_roles = load_user_roles(users, data_dir)
@@ -313,18 +326,23 @@ def laod_all(data_dir: Path = DATA_DIR) -> Mapping[str, object]:
         "users": users,
         "user_roles": user_roles,
         "groups": groups,
-        "mac": load_mac_labels,
-        "role_perms": load_role_permissions,
-        "dac_owners": load_dac_owners
+        "mac": load_mac_labels(users, data_dir),
+        "role_perms": load_role_permissions(user_roles, data_dir),
+        "dac_owners": load_dac_owners(users, groups, data_dir),
     })
 
+
+def load_all(data_dir: Path = DATA_DIR) -> Mapping[str, object]:
+    try:
+        return _load_all(data_dir)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise DataError(f"Malformed static data: {type(exc).__name__}") from None
+
+
+# Compatibility with the original WP2 spelling.
+laod_all = load_all
+
+
 @lru_cache(maxsize=1)
-
 def get_data() -> Mapping[str, object]:
-    return laod_all()
-
-
-
-
-    
-    
+    return load_all()

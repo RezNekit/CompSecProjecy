@@ -8,7 +8,10 @@ import time
 from typing import Mapping
 
 
-from .audit import write_audit
+try:
+    from .audit import write_audit
+except ImportError:  # direct server.py entry point
+    from audit import write_audit
 
 
 MAX_FAILS = 5
@@ -35,11 +38,17 @@ def verify_password(input_pw: str, stored_salt_b64: str, stored_hash_b64: str, n
 
 
 class AuthService:
-    def __init__(self, users: Mapping[str, Mapping[str, object]]) -> None:
+    def __init__(self, users: Mapping[str, Mapping[str, object]], *, audit_path=None) -> None:
         self.users = users
+        self.audit_path = audit_path
         self._failures: dict[str, list[float]] = {}
         self._locked_until: dict[str, float] = {}
         self._lock = threading.Lock()
+
+    def _audit(self, **record):
+        if self.audit_path is not None:
+            record["audit_path"] = self.audit_path
+        write_audit(**record)
 
     def authenticate(self, username: str, password: str) -> bool:
         now = time.monotonic()
@@ -50,7 +59,7 @@ class AuthService:
         with self._lock:
             locked_until = self._locked_until.get(uname, 0.0)
             if now < locked_until:
-                write_audit(user=uname, op="auth", path="/auth", allowed=False, reason="Account locked due to repeated failures",model="AuthN")
+                self._audit(user=uname, op="auth", path="/auth", allowed=False, reason="Account locked due to repeated failures",model="AuthN")
                 return False
             if locked_until:
                 self._locked_until.pop(uname, None)
@@ -66,7 +75,7 @@ class AuthService:
                 pw = password
 
             salt_b64 = str(record.get("salt", ""))
-            hash_b64 = str(record.get("password hash", ""))
+            hash_b64 = str(record.get("password_hash", ""))
             n = int(record.get("n", 16384))
             r = int(record.get("r", 8))
             p = int(record.get("p", 1))
@@ -80,30 +89,30 @@ class AuthService:
                     self._failures.pop(uname, None)
                     self._locked_until.pop(uname, None)
 
-                    write_audit(user=uname, op="auth", path="/auth", allowed=True, reason="Authentication succeeded", model="AuthN")
+                    self._audit(user=uname, op="auth", path="/auth", allowed=True, reason="Authentication succeeded", model="AuthN")
 
                     return True
 
-                time.sleep(FAILS_DELAY_SECS)
-                after_delay = time.monotonic()
+        time.sleep(FAILS_DELAY_SECS)
+        after_delay = time.monotonic()
 
-                locked_now = False
+        locked_now = False
 
-                with self._lock:
-                    recent = []
-                    for timestamp in self._failures.get(uname, []):
-                        if (after_delay - timestamp) <= WINDOW_SECONDS:
-                            recent.append(timestamp)
-                    recent.append(after_delay)
-                    if len(recent) >= MAX_FAILS:
-                        self._failures.pop(uname, None)
-                        self._locked_until[uname] = after_delay + LOCK_SECONDS
-                        locked_now = True
+        with self._lock:
+            recent = []
+            for timestamp in self._failures.get(uname, []):
+                if (after_delay - timestamp) <= WINDOW_SECONDS:
+                    recent.append(timestamp)
+            recent.append(after_delay)
+            if len(recent) >= MAX_FAILS:
+                self._failures.pop(uname, None)
+                self._locked_until[uname] = after_delay + LOCK_SECONDS
+                locked_now = True
 
-                    else:
-                        self._failures[uname] = recent
+            else:
+                self._failures[uname] = recent
 
-                    reason = ("Account locked due to repeated failures" if locked_now else "Invalid username or password")
+            reason = ("Account locked due to repeated failures" if locked_now else "Invalid username or password")
 
-                    write_audit(user=uname, op="auth", path="/auth", allowed=False, reason=reason, model="AuthN")
-                    return False
+            self._audit(user=uname, op="auth", path="/auth", allowed=False, reason=reason, model="AuthN")
+            return False

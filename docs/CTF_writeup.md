@@ -13,9 +13,9 @@ changed the flag on the hardened server, and alice could still read it. On the u
 client leaked the flag in 3 different ways and destroyed it once.
 
 The hardened runs (22 November) used the project's `server/server.py` with the project's policy,
-`server/policy.py` loaded from `data/`. The password store (`server/auth.py`) is not in the repository yet, so the
-runner gave each user a random one-run password; `run_attacks.py` switches to `auth.py` once it exists
-(section 8). Authentication is not part of what protects the flag, so this does not change the results.
+`server/policy.py` loaded from `data/`. The final integration runner uses `server/auth.py` with temporary salted scrypt records for each
+user. Earlier protocol/policy runs used a one-run password callback; section 9 describes the
+authentication integration and the current evidence.
 
 ## 2. Flag design
 
@@ -92,7 +92,7 @@ never would. Full results are in `docs/evidence/ctf-attacks.md`.
 | A5 Handle reuse | eve uses alice's live handle; guessed tokens `1`, `2`, zeros; alice reuses a closed handle; WRITE through a read-only handle | FAILURE / PERMISSION_DENIED (6/6) | handles are random 192-bit tokens kept per session (lines 398-403); closed tokens are deleted; kind and read/write mode are checked on every use (lines 388-392 and 545-549) |
 | A6 Destroy the flag | eve WRITE\|TRUNC; eve READ\|TRUNC; bob WRITE\|CREAT | denied (3/3); flag intact | mutation flags require WRITE and the `write` decision before any filesystem call (lines 470-478) |
 | A7 Insider exfiltration | alice, who may read the flag, creates `/public/flag_copy.txt` and `/projects/flag_copy.txt` | PERMISSION_DENIED (2/2) | MAC no write down: confidential subject cannot write public or internal objects |
-| A8 Symlink-swap race | a thread swaps `/public/race.txt` between a plain file and a link to the flag (439 swaps) while eve reads it 300 times | 0 leaks (209 denied, 91 got the harmless file) | after the gate, `Jail.parent` walks directories with `O_DIRECTORY` + `O_NOFOLLOW` descriptors and opens the leaf with `O_NOFOLLOW` (lines 208-236), so a link swapped in after the check cannot be followed |
+| A8 Symlink-swap race | a thread swaps `/public/race.txt` between a plain file and a link to the flag (416 swaps) while eve reads it 300 times | 0 leaks (232 denied, 68 got the harmless file) | after the gate, `Jail.parent` walks directories with `O_DIRECTORY` + `O_NOFOLLOW` descriptors and opens the leaf with `O_NOFOLLOW` (lines 208-236), so a link swapped in after the check cannot be followed |
 
 ## 6. Evidence and how auditing helped
 
@@ -126,7 +126,7 @@ for each protocol-level rejection (`allowed: false`, `reason: "path validation"`
 
 ## 7. Limitations
 
-- Passwords were random one-run values, not the project's password store, which is not in the repository yet.
+- Final attack runs use real AuthService with temporary salted scrypt records; deployed passwords are not needed. Earlier runs used one-run callbacks.
 - Tested on macOS (Python 3.14, AsyncSSH 2.24.1). The Windows code path (reparse points, case folding) is not
   exercised by these attacks.
 - A8 is a probabilistic test. 0 leaks in 300 reads shows the defence holds in practice; it does not prove a leak
@@ -143,5 +143,23 @@ python3 ctf/run_attacks.py            # hardened + naive runs, writes docs/evide
 python3 ctf/setup_flag.py             # plant the flag in server/sftp_root for a live demo
 ```
 
-Once `server/auth.py` exists, set `CTF_PASSWORD_ALICE`, `CTF_PASSWORD_BOB` and `CTF_PASSWORD_EVE` and run
+To use deployed password records instead of temporary hashes, set `CTF_PASSWORD_ALICE`, `CTF_PASSWORD_BOB` and `CTF_PASSWORD_EVE` and run
 `python3 ctf/run_attacks.py --auth real`. The naive run needs port 2222 free.
+
+## 9. WP5 integration verification
+
+After WP2 arrived, WP5 connected the attack runner to the real `AuthService`.
+The 22 November integration rerun used temporary salted scrypt password records
+for alice, bob and eve, real DAC/MAC/RBAC policy and host-verified SSH. The
+hardened server reported zero attack problems and an intact flag; the course
+starter exposed or destroyed the flag in four attacks. The current transcript
+and audit are in `docs/evidence/ctf-attacks.md` and `ctf-audit.jsonl`.
+Earlier one-run-password evidence described above was a protocol/policy fixture;
+it did not verify password hashing. The integration rerun and WP5 lockout tests
+add that coverage. This PDF does not claim that a timed race test proves freedom
+from every possible race.
+
+Generative AI assisted the client/CTF implementation and write-up, integration
+review and test cases. The project was not written entirely with AI. See
+`docs/ai-disclosure.md` for the component-level disclosure and remaining team
+confirmation steps.

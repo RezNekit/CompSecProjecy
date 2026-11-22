@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_AUDIT_PATH = BASE_DIR.parent / "audit.jsonl"
+DEFAULT_AUDIT_PATH = BASE_DIR / "audit.jsonl"
 
 _LOCK = threading.Lock()
 
@@ -28,7 +28,7 @@ def _sanitize_text(value: object) -> str:
 
 def write_audit(*, user: str | None, op: str, path: str | None, allowed: bool, reason: str, model: str | None = None, session: str | None = None, audit_path = DEFAULT_AUDIT_PATH) -> None:
     record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "user": _sanitize_text(user),
         "op": _sanitize_text(op),
         "path": _sanitize_text(path),
@@ -40,6 +40,7 @@ def write_audit(*, user: str | None, op: str, path: str | None, allowed: bool, r
 
     line = json.dumps(record, ensure_ascii=False) + "\n"
     with _LOCK:
+        audit_path = Path(audit_path)
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         with audit_path.open("a", encoding="utf-8") as fh:
             fh.write(line)

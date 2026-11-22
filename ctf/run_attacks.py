@@ -322,7 +322,7 @@ def auth_mode(requested: str):
         if not has_auth or not all(env_pw.values()):
             sys.exit("--auth real needs server/auth.py and CTF_PASSWORD_<USER> for every user")
         return "real", env_pw
-    return "one-run", {u: secrets.token_urlsafe(12) for u in USERS}
+    return ("one-run" if requested == "one-run" else "ephemeral-scrypt"), {u: secrets.token_urlsafe(12) for u in USERS}
 
 
 async def run_hardened(work: Path, mode: str, passwords: dict):
@@ -335,8 +335,16 @@ async def run_hardened(work: Path, mode: str, passwords: dict):
     audit = work / "audit.jsonl"
     policy = Policy(DATA_DIR, audit)
     authorize, inherit = policy.authorize, policy.inherit
-    if mode == "real":
-        from auth import verify_password
+    if mode in ("real", "ephemeral-scrypt"):
+        from auth import AuthService
+        if mode == "real":
+            from loader import load_users
+            users = load_users(DATA_DIR)
+        else:
+            sys.path.insert(0, str(ROOT / "tools"))
+            from make_users import create_user_record
+            users = {u: create_user_record(u, p) for u, p in passwords.items()}
+        verify_password = AuthService(users, audit_path=audit).authenticate
     else:
         def verify_password(user, password):
             return user in passwords and secrets.compare_digest(password, passwords[user])
@@ -348,6 +356,7 @@ async def run_hardened(work: Path, mode: str, passwords: dict):
         await hardened_attacks(target)
     finally:
         listener.close()
+        await listener.wait_closed()
     target.flag_ok = target.flag_intact()
     target.audit = audit if audit.exists() else None
     return target
@@ -397,8 +406,9 @@ def write_evidence(h: Target, n: Target, mode: str):
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                             capture_output=True, text=True).stdout.strip() or "unknown"
-    auth_line = ("`server/auth.py`" if mode == "real" else
-                 "random one-run passwords (`server/auth.py` not present)")
+    auth_line = ("`server/auth.py` AuthService with temporary salted scrypt records"
+                 if mode == "ephemeral-scrypt" else "`server/auth.py` with deployed users.json"
+                 if mode == "real" else "explicit one-run password callback (no AuthN coverage)")
     exposed = [r for r in h.results if r["verdict"] == "EXPOSED"]
     audit_lines = []
     if h.audit:

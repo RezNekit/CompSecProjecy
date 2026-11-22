@@ -7,6 +7,7 @@ Paths and the persistent host key are relative to this file, never the CWD.
 from __future__ import annotations
 
 import asyncio
+import argparse
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
 import errno
@@ -592,7 +593,10 @@ class Server(asyncssh.SSHServer):
 
     async def validate_password(self, username, password):
         try:
-            result = self.verify_password(username, password)
+            if inspect.iscoroutinefunction(self.verify_password):
+                result = self.verify_password(username, password)
+            else:
+                result = await asyncio.to_thread(self.verify_password, username, password)
             if inspect.isawaitable(result):
                 result = await result
             return result is True
@@ -623,21 +627,24 @@ async def serve(verify_password, authorize, inherit, *, root=JAIL_ROOT,
     )
 
 
-async def main():
+async def main(*, data_dir=BASE_DIR.parent / "data", root=JAIL_ROOT,
+               host_key=HOST_KEY_PATH, port=2222, audit_path=BASE_DIR / "audit.jsonl"):
     # WP2 owns startup data loading/validation and auth logging. WP3 owns
     # authorization/audit and creation metadata. Missing modules stop startup.
-    try:
-        if __package__:
-            from .auth import verify_password
-            from .policy import authorize, inherit
-        else:
-            from auth import verify_password
-            from policy import authorize, inherit
-    except ImportError:
-        raise RuntimeError("WP2 auth.py and WP3 policy.py with verify_password, "
-                           "authorize and inherit hooks must be integrated before startup") from None
-    listener = await serve(verify_password, authorize, inherit)
-    LOG.info("SFTP listening on 127.0.0.1:2222")
+    if __package__:
+        from .auth import AuthService
+        from .loader import load_all
+        from . import policy
+    else:
+        from auth import AuthService
+        from loader import load_all
+        import policy
+    data = load_all(data_dir)
+    auth = AuthService(data["users"], audit_path=audit_path)
+    policy.init(data_dir, audit_path)
+    listener = await serve(auth.authenticate, policy.authorize, policy.inherit,
+                           root=root, host_key=host_key, port=port)
+    LOG.info("SFTP listening on 127.0.0.1:%d", listener.get_port())
     async with listener:
         await listener.wait_closed()
 
@@ -645,10 +652,17 @@ async def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("asyncssh").setLevel(logging.WARNING)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", type=Path, default=BASE_DIR.parent / "data")
+    parser.add_argument("--root", type=Path, default=JAIL_ROOT)
+    parser.add_argument("--host-key", type=Path, default=HOST_KEY_PATH)
+    parser.add_argument("--port", type=int, default=2222)
+    parser.add_argument("--audit-path", type=Path, default=BASE_DIR / "audit.jsonl")
+    args = parser.parse_args()
     try:
-        asyncio.run(main())
+        asyncio.run(main(**vars(args)))
     except KeyboardInterrupt:
         pass
-    except (RuntimeError, OSError, asyncssh.Error):
-        LOG.error("Server startup failed: check WP2/WP3 hooks, data and persistent Ed25519 key")
+    except (RuntimeError, OSError, asyncssh.Error) as exc:
+        LOG.error("Server startup failed: %s", exc)
         raise SystemExit(1) from None

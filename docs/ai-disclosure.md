@@ -1,17 +1,22 @@
 # Generative AI disclosure
 
-For team review before submission.
+We used AI to assist with understanding the assignment, integration and debugging
+steps, test-case design, and documentation. The project was not written entirely
+with AI. Its implementation combines the course starter, team contributions,
+and AI-assisted work.
 
-Person 5 used OpenAI Codex to read the provided assignment and task division,
-inspect the repository, add raw SFTP/integration tests and test objectives,
-create CI and submission checking/packaging tools, repair policy-hook delegation,
-and draft this disclosure and the WP5 results/handoff document. Codex ran the
-suite locally; the observed result is recorded in docs/evidence/wp5-results.md.
-The human submitter must understand and review all submitted code and statements.
+For Person 5, OpenAI Codex assisted with reviewing interfaces and teammate code,
+adding and running test cases, identifying and fixing integration defects,
+configuring CI, preparing the submission checks/archive, and drafting the README
+and verification records. This assistance included generated portions of test
+code, integration fixes and documentation; it was not limited to suggestions.
+The team is responsible for reviewing and understanding submitted code and text.
 
-Other members' AI use has not been collected. Each member must specify the code
-components and report sections assisted by generative AI, or explicitly confirm
-no use. Do not submit this document as a completed team disclosure until those
-confirmations have been added.
+Omar used LLMs to understand and implement the client and CTF, and to assist with
+the CTF write-up, while reviewing and understanding the resulting code and text.
+This records the disclosure he supplied in the repository.
 
-Omar used LLMs to understand the topic he was assigned to implement which is Client + CTF and understand how to implement it since never done Computer Security work before, it has helped both in the implementation of the CTF and the writeup file, still while being in control and reviewing and understanding all code or text.
+Individual confirmations for the remaining members have not been supplied.
+The team should check this section before submission and add any further
+AI-assisted code components or report sections. This is not a claim that every
+member has already confirmed their usage or reviewed every change.

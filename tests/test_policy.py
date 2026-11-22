@@ -128,6 +128,6 @@ def test_audit_records_allow_and_deny(tmp_path):
     p.authorize("eve", "read", "/admin/flag.txt")
     lines = (tmp_path / "audit.jsonl").read_text().splitlines()
     first, second = (json.loads(line) for line in lines)
-    assert set(first) == {"timestamp", "user", "op", "path", "allowed", "reason"}
+    assert {"timestamp", "user", "op", "path", "allowed", "reason"} <= set(first)
     assert (first["user"], first["op"], first["allowed"]) == ("bob", "write", True)
     assert (second["user"], second["path"], second["allowed"]) == ("eve", "/admin/flag.txt", False)

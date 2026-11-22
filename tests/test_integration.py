@@ -29,13 +29,11 @@ def test_policy_missing_or_malformed_data(tmp_path):
         policy.Policy(tmp_path / 'data', tmp_path / 'audit.jsonl')
 
 
-def test_missing_auth_fails_startup_cleanly():
-    """An incomplete checkout refuses startup without creating an unauthenticated server."""
-    if (ROOT / 'server/auth.py').exists():
-        import pytest
-        pytest.skip('WP2 now present; replace with complete startup acceptance test')
-    result = subprocess.run([sys.executable, str(ROOT / 'server/server.py')],
+def test_invalid_startup_fails_cleanly(tmp_path):
+    """Missing startup data yields a readable nonzero exit without a traceback."""
+    result = subprocess.run([sys.executable, str(ROOT / 'server/server.py'),
+                             '--data-dir', str(tmp_path)],
                             capture_output=True, text=True, timeout=10)
     assert result.returncode == 1
-    assert 'Server startup failed' in result.stderr
+    assert 'users.json' in result.stderr
     assert 'Traceback' not in result.stderr

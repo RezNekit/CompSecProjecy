@@ -4,3 +4,4 @@ prefix,owner,group,mode
 /public/archive,alice,admins,0750
 /projects,alice,analysts,0770
 /admin,alice,admins,0700
+/demo,alice,analysts,0770

@@ -117,6 +117,7 @@ but MAC still stops her writing there. bob's analyst role lets him read
 
 ## Audit log
 
+Authentication and policy share the synchronized writer in `server/audit.py`.
 Every decision is added to `server/audit.jsonl` as one JSON line with the time,
 user, operation, path, result and reason. If the log cannot be written, the
 request is refused. The client only ever sees "permission denied"; the reason
@@ -145,7 +146,11 @@ restarting. One limitation: ownership of files created while the server runs is
 kept in memory, so after a restart those files fall back to the owner of
 the closest folder listed in `data/dac_owners.csv`.
 
-`pytest -q` runs the 10 tests in `tests/test_policy.py`: three for DAC (owner,
+`pytest -q` runs the complete suite; `tests/test_policy.py` contains 10 policy tests: three for DAC (owner,
 group and other; the folder x bit; inheritance), two for MAC, two for RBAC
 (analyst versus admin; deny overrides), two for combined decisions and default
 deny (including traversal attempts), and one for the audit log.
+
+Startup calls `loader.load_all()` to validate all six static files, constructs
+`AuthService`, and calls `policy.init()` before accepting SSH connections.
+See README and docs/evidence/wp5-results.md for integrated test results.
